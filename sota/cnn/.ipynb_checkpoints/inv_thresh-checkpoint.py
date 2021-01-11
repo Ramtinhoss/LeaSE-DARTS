@@ -26,6 +26,7 @@ from copy import deepcopy
 from numpy import linalg as LA
 
 from torch.utils.tensorboard import SummaryWriter
+##############################################################################################################################
 import torchvision.models as models
 # resnet18 = models.resnet18()
 # # torch.cuda.clear_memory_allocated()
@@ -34,6 +35,7 @@ import torchvision.models as models
 # torch.cuda.empty_cache()
 # resnet18 = resnet18.cuda()
 print(torch.cuda.memory_summary(torch.device('cuda:0')))
+##############################################################################################################################
 
 parser = argparse.ArgumentParser("sota")
 parser.add_argument('--data', type=str, default='../../data',
@@ -60,7 +62,7 @@ parser.add_argument('--train_portion', type=float, default=0.5, help='portion of
 parser.add_argument('--unrolled', action='store_true', default=False, help='use one-step unrolled validation loss')
 parser.add_argument('--arch_learning_rate', type=float, default=3e-4, help='learning rate for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
-parser.add_argument('--search_space', type=str, default='s3', help='searching space to choose from')
+parser.add_argument('--search_space', type=str, default='s5', help='searching space to choose from')
 parser.add_argument('--perturb_alpha', type=str, default='pgd_linf', help='perturb for alpha')
 parser.add_argument('--epsilon_alpha', type=float, default=0.3, help='max epsilon for alpha')
 args = parser.parse_args()
@@ -123,6 +125,7 @@ def main():
 
     criterion = nn.CrossEntropyLoss()
     criterion = criterion.cuda()
+    #######################################
     resnet18 = models.resnet18()
     # torch.cuda.clear_memory_allocated()
 #     del Variables
@@ -130,6 +133,7 @@ def main():
 #     torch.cuda.empty_cache()
     resnet18 = resnet18.cuda()
     model2 = resnet18
+    ######################################
     model = Network(args.init_channels, n_classes, args.layers, criterion, spaces_dict[args.search_space])
     model = model.cuda()
     model_adv = AttackPGD(model)
@@ -201,22 +205,27 @@ def main():
         print(F.softmax(model.alphas_reduce, dim=-1))
 
         # training
-        train_acc, train_obj = train(train_queue, valid_queue, model_adv, architect, criterion, optimizer, lr,
+#         _, _, delta = train3(train_queue, valid_queue, model, architect, criterion, optimizer, lr, 
+#                                          perturb_alpha, epsilon_alpha, model2, epoch)
+#         train_acc, train_obj = train4(train_queue, valid_queue, model, architect, criterion, optimizer, lr, 
+#                                          perturb_alpha, epsilon_alpha, model2, epoch, delta)
+#         train_acc, train_obj = train2(train_queue, valid_queue, model, architect, criterion, optimizer, lr, 
+#                                          perturb_alpha, epsilon_alpha, model2, epoch)
+        train_acc, train_obj = train(train_queue, valid_queue, model, architect, criterion, optimizer, lr, 
                                          perturb_alpha, epsilon_alpha, model2, epoch)
         logging.info('train_acc %f', train_acc)
         writer.add_scalar('Acc/train', train_acc, epoch)
         writer.add_scalar('Obj/train', train_obj, epoch)
 
         # validation
-
+#         valid_acc, valid_obj = infer(valid_queue, model, criterion)
+############################################################################################################
         valid_acc, valid_obj = infer(valid_queue, resnet18, criterion)
-
+############################################################################################################
         logging.info('valid_acc %f', valid_acc)
         writer.add_scalar('Acc/valid', valid_acc, epoch)
         writer.add_scalar('Obj/valid', valid_obj, epoch)
-
         utils.save(model, os.path.join(args.save, 'weights.pt'))
-        
     writer.close()
 
 
@@ -251,22 +260,33 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr, 
 
         
         
-        logits, diff, x = model(input, target)
-#         logits, diff, x = model(input, target, updateType='weight')
+#         logits, diff, x = model(input, target)
+        logits = model(input, updateType='weight')
         loss = criterion(logits, target)
-
         optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
-        optimizer.step()
-
-        pert_inp = torch.mul (input, diff)
+        optimizer.step()  
+        
+        
+        if epoch>=15:
+            model_adv = AttackPGD(model)
+            logits1, diff, x = model_adv(input, target)
+    #         loss1 = criterion(logits1, target)
+    #         optimizer.zero_grad()
+    #         loss1.backward()
+    #         optimizer.step() 
+            deltas = 1 - torch.round(torch.abs(diff) * 255/8 + 0.4)
+            print(deltas)
+            pert_inp = torch.mul (input, deltas)
+            
+            
         logits2 = model2(pert_inp)
 #         logits2 = model2(x)
         loss2 = criterion(logits2, target)
-
+        optimizer.zero_grad()
         loss2.backward()
-        nn.utils.clip_grad_norm_(model2.parameters(), args.grad_clip)
+#         nn.utils.clip_grad_norm_(model2.parameters(), args.grad_clip)
         optimizer.step()
 
 
@@ -345,4 +365,4 @@ def infer(valid_queue, model, criterion):
 
 
 if __name__ == '__main__':
-    main()
+    main() 

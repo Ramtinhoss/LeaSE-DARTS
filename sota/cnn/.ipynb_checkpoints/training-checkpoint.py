@@ -42,7 +42,6 @@ parser.add_argument('--data', type=str, default='../../data',
                     help='location of the data corpus')
 parser.add_argument('--dataset', type=str, default='cifar10', help='choose dataset')
 parser.add_argument('--batch_size', type=int, default=64, help='batch size')
-# parser.add_argument('--learning_rate', type=float, default=0.025, help='init learning rate')
 parser.add_argument('--learning_rate', type=float, default=0.025, help='init learning rate')
 parser.add_argument('--learning_rate_min', type=float, default=0.001, help='min learning rate')
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
@@ -137,6 +136,7 @@ def main():
     ######################################
     model = Network(args.init_channels, n_classes, args.layers, criterion, spaces_dict[args.search_space])
     model = model.cuda()
+    model_adv = AttackPGD(model)
     logging.info("param size = %fMB", utils.count_parameters_in_MB(model))
 
     optimizer = torch.optim.SGD(
@@ -211,7 +211,7 @@ def main():
 #                                          perturb_alpha, epsilon_alpha, model2, epoch, delta)
 #         train_acc, train_obj = train2(train_queue, valid_queue, model, architect, criterion, optimizer, lr, 
 #                                          perturb_alpha, epsilon_alpha, model2, epoch)
-        train_acc, train_obj = train(train_queue, valid_queue, model, architect, criterion, optimizer, lr, 
+        train_acc, train_obj = train(train_queue, valid_queue, model_adv, architect, criterion, optimizer, lr, 
                                          perturb_alpha, epsilon_alpha, model2, epoch)
         logging.info('train_acc %f', train_acc)
         writer.add_scalar('Acc/train', train_acc, epoch)
@@ -304,67 +304,18 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr, 
 #         optimizer.zero_grad()
         architect.optimizer.zero_grad()
 
-        # print('before softmax', model.arch_parameters())
-#         model.softmax_arch_parameters()
+
         
-
-############################################################################################################
-############################################################################################################
-#         model_adv = AttackPGD(model)
-# # #         logits1, diff = model_adv(input, target)
-#         logits1, diff, x = model_adv(input, target)
-#         loss1 = criterion(logits1, target)
-
-#         optimizer.zero_grad()
-#         loss1.backward()
-#         optimizer.step()       
-
-############################################################################################################
-#         if perturb_alpha:
-#             diff = perturb_alpha(model, input, target, epsilon_alpha)
-#             optimizer.zero_grad()
-#             architect.optimizer.zero_grad()
-        # print('after perturb', model.arch_parameters())
-############################################################################################################
-############################################################################################################            
-
-        logits = model(input, updateType='weight')
+        
+        logits, diff, x = model(input, target)
+#         logits, diff, x = model(input, target, updateType='weight')
         loss = criterion(logits, target)
-        
+
         optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
-        optimizer.step()
-#         model.restore_arch_parameters()
+        optimizer.step()  
 
-############################################################################################################
-############################################################################################################
-        model_adv = AttackPGD(model)
-#         logits1, diff = model_adv(input, target)
-        logits1, diff, x = model_adv(input, target)
-        loss1 = criterion(logits1, target)
-
-        optimizer.zero_grad()
-        loss1.backward()
-        optimizer.step()   
-
-############################################################################################################
-#         if perturb_alpha:
-#                 diff = perturb_alpha(model, input, target, epsilon_alpha)
-#                 print(diff)
-#                 print(epsilon_alpha)
-#                 
-#                 optimizer.zero_grad()
-#                 architect.optimizer.zero_grad()
-
-############################################################################################################    
-############################################################################################################        
-
-
-#         logits2 = resnet18(input*diff, updateType='weight')
-
-#         pert_inp = input * epsilon_alpha
-#         pert_inp = input * diff
         pert_inp = torch.mul (input, diff)
         logits2 = model2(pert_inp)
 #         logits2 = model2(x)
@@ -386,312 +337,6 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr, 
 
 
     return  100.*correct/total, train_loss/(max_step+1)
-
-
-
-
-
-
-def train2(train_queue, valid_queue, model, architect, criterion, optimizer, lr, perturb_alpha, epsilon_alpha, model2, epoch):
-    objs = utils.AvgrageMeter()
-    top1 = utils.AvgrageMeter()
-    top5 = utils.AvgrageMeter()
-    
-    train_loss = 0
-    correct = 0
-    total = 0
-    max_step = 0
-#     delta = torch.empty(5, 3, 32, 32)
-    m = 64
-    for step, (input, target) in enumerate(train_queue):
-        model.train()
-        n = input.size(0)
-        print(n)
-        
-
-        input = input.cuda()
-        target = target.cuda(non_blocking=True)
-
-        # get a random minibatch from the search queue with replacement
-        input_search, target_search = next(iter(valid_queue))
-        input_search = input_search.cuda()
-        target_search = target_search.cuda(non_blocking=True)
-#         if epoch>=15:
-#             architect.step(input, target, input_search, target_search, lr, optimizer, unrolled=args.unrolled)
-
-        architect.step(input, target, input_search, target_search, lr, optimizer, unrolled=args.unrolled)
-#         optimizer.zero_grad()
-        architect.optimizer.zero_grad()
-
-        # print('before softmax', model.arch_parameters())
-#         model.softmax_arch_parameters()
-        
-
-############################################################################################################
-############################################################################################################
-#         model_adv = AttackPGD(model)
-# # #         logits1, diff = model_adv(input, target)
-#         logits1, diff, x = model_adv(input, target)
-#         loss1 = criterion(logits1, target)
-
-#         optimizer.zero_grad()
-#         loss1.backward()
-#         optimizer.step()       
-
-############################################################################################################
-#         if perturb_alpha:
-#             diff = perturb_alpha(model, input, target, epsilon_alpha)
-#             optimizer.zero_grad()
-#             architect.optimizer.zero_grad()
-        # print('after perturb', model.arch_parameters())
-############################################################################################################
-############################################################################################################            
-
-        logits = model(input, updateType='weight')
-        loss = criterion(logits, target)
-        
-        optimizer.zero_grad()
-        loss.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
-        optimizer.step()
-#         model.restore_arch_parameters()
-
-############################################################################################################
-############################################################################################################
-        model_adv = AttackPGD(model)
-#         logits1, diff = model_adv(input, target)
-        logits1, diff, x = model_adv(input, target)
-        loss1 = criterion(logits1, target)
-
-        optimizer.zero_grad()
-        loss1.backward()
-        optimizer.step()   
-
-############################################################################################################
-#         if perturb_alpha:
-#                 diff = perturb_alpha(model, input, target, epsilon_alpha)
-#                 print(diff)
-#                 print(epsilon_alpha)
-#                 
-#                 optimizer.zero_grad()
-#                 architect.optimizer.zero_grad()
-
-############################################################################################################    
-############################################################################################################        
-        if diff.size() != delta.size():
-            print(list(diff.size())) 
-            print(list(input.size()))
-            break
-        delta = diff
-        
-        prec1, prec5 = utils.accuracy(logits, target, topk=(1, 5))
-        objs.update(loss.data, n)
-        top1.update(prec1.data, n)
-        top5.update(prec5.data, n)
-        
-
-        if step % args.report_freq == 0:
-            logging.info('train %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
-            if 'debug' in args.save:
-                break
-#         if step > 5:
-#             break
-
-    
-    
-    
-
-    for step, (input, target) in enumerate(train_queue):
-        model.train()
-        n = input.size(0)
-
-        input = input.cuda()
-        target = target.cuda(non_blocking=True)
-
-#         logits2 = resnet18(input*diff, updateType='weight')
-
-#         pert_inp = input * epsilon_alpha
-#         pert_inp = input * diff
-        if delta.size() != input.size():
-            print(list(delta.size())) 
-            print(list(input.size()))
-            break
-        else:
-            pert_inp = torch.mul (input, delta)
-        logits2 = model2(pert_inp)
-#         logits2 = model2(x)
-        loss2 = criterion(logits2, target)
-
-        loss2.backward()
-        nn.utils.clip_grad_norm_(model2.parameters(), args.grad_clip)
-        optimizer.step()
-#         model.restore_arch_parameters()
-
-        train_loss += loss2.item()
-        _, predicted = logits2.max(1)
-        total += target.size(0)
-        correct += predicted.eq(target).sum().item()
-        max_step = step
-
-        progress_bar(step, len(train_queue), 'Loss: %.3f | Acc: %.3f%% (%d/%d)' % (train_loss/(step+1), 100.*correct/total, correct, total))
-
-    return 100.*correct/total, train_loss/(max_step+1)
-
-
-def train3(train_queue, valid_queue, model, architect, criterion, optimizer, lr, perturb_alpha, epsilon_alpha, model2, epoch):
-    objs = utils.AvgrageMeter()
-    top1 = utils.AvgrageMeter()
-    top5 = utils.AvgrageMeter()
-    
-    train_loss = 0
-    correct = 0
-    total = 0
-    max_step = 0
-    delta = torch.empty(64, 3, 32, 32)
-    m = 64
-    for step, (input, target) in enumerate(train_queue):
-        model.train()
-        n = input.size(0)
-        print(n)
-        
-
-        input = input.cuda()
-        target = target.cuda(non_blocking=True)
-
-        # get a random minibatch from the search queue with replacement
-        input_search, target_search = next(iter(valid_queue))
-        input_search = input_search.cuda()
-        target_search = target_search.cuda(non_blocking=True)
-#         if epoch>=15:
-#             architect.step(input, target, input_search, target_search, lr, optimizer, unrolled=args.unrolled)
-
-        architect.step(input, target, input_search, target_search, lr, optimizer, unrolled=args.unrolled)
-#         optimizer.zero_grad()
-        architect.optimizer.zero_grad()
-
-        # print('before softmax', model.arch_parameters())
-#         model.softmax_arch_parameters()
-        
-
-############################################################################################################
-############################################################################################################
-#         model_adv = AttackPGD(model)
-# # #         logits1, diff = model_adv(input, target)
-#         logits1, diff, x = model_adv(input, target)
-#         loss1 = criterion(logits1, target)
-
-#         optimizer.zero_grad()
-#         loss1.backward()
-#         optimizer.step()       
-
-############################################################################################################
-#         if perturb_alpha:
-#             diff = perturb_alpha(model, input, target, epsilon_alpha)
-#             optimizer.zero_grad()
-#             architect.optimizer.zero_grad()
-        # print('after perturb', model.arch_parameters())
-############################################################################################################
-############################################################################################################            
-
-        logits = model(input, updateType='weight')
-        loss = criterion(logits, target)
-        
-        optimizer.zero_grad()
-        loss.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
-        optimizer.step()
-#         model.restore_arch_parameters()
-
-############################################################################################################
-############################################################################################################
-        model_adv = AttackPGD(model)
-#         logits1, diff = model_adv(input, target)
-        logits1, diff, x = model_adv(input, target)
-        loss1 = criterion(logits1, target)
-
-        optimizer.zero_grad()
-        loss1.backward()
-        optimizer.step()   
-
-############################################################################################################
-#         if perturb_alpha:
-#                 diff = perturb_alpha(model, input, target, epsilon_alpha)
-#                 print(diff)
-#                 print(epsilon_alpha)
-#                 
-#                 optimizer.zero_grad()
-#                 architect.optimizer.zero_grad()
-
-############################################################################################################    
-############################################################################################################        
-        if diff.size() != delta.size():
-            print(list(diff.size())) 
-            print(list(input.size()))
-            break
-        delta = diff
-        
-        prec1, prec5 = utils.accuracy(logits, target, topk=(1, 5))
-        objs.update(loss.data, n)
-        top1.update(prec1.data, n)
-        top5.update(prec5.data, n)
-        
-
-        if step % args.report_freq == 0:
-            logging.info('train %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
-            if 'debug' in args.save:
-                break
-#         if step > 5:
-#             break
-
-    return top1.avg, objs.avg, delta
-
-def train4(train_queue, valid_queue, model, architect, criterion, optimizer, lr, perturb_alpha, epsilon_alpha, model2, epoch,delta):
-    objs = utils.AvgrageMeter()
-    top1 = utils.AvgrageMeter()
-    top5 = utils.AvgrageMeter()
-    
-    train_loss = 0
-    correct = 0
-    total = 0
-    max_step = 0
-#     delta = torch.empty(5, 3, 32, 32)
-    m = 64
-
-    for step, (input, target) in enumerate(train_queue):
-        model.train()
-        n = input.size(0)
-
-        input = input.cuda()
-        target = target.cuda(non_blocking=True)
-
-#         logits2 = resnet18(input*diff, updateType='weight')
-
-#         pert_inp = input * epsilon_alpha
-#         pert_inp = input * diff
-        if delta.size() != input.size():
-            print(list(delta.size())) 
-            print(list(input.size()))
-            break
-        else:
-            pert_inp = torch.mul (input, delta)
-        logits2 = model2(pert_inp)
-#         logits2 = model2(x)
-        loss2 = criterion(logits2, target)
-
-        loss2.backward()
-        nn.utils.clip_grad_norm_(model2.parameters(), args.grad_clip)
-        optimizer.step()
-#         model.restore_arch_parameters()
-
-        train_loss += loss2.item()
-        _, predicted = logits2.max(1)
-        total += target.size(0)
-        correct += predicted.eq(target).sum().item()
-        max_step = step
-
-        progress_bar(step, len(train_queue), 'Loss: %.3f | Acc: %.3f%% (%d/%d)' % (train_loss/(step+1), 100.*correct/total, correct, total))
-
-    return 100.*correct/total, train_loss/(max_step+1)
 
 
 
@@ -732,9 +377,8 @@ def infer(valid_queue, model, criterion):
     if acc > best_acc:
         print('Saving..')
         state = {
-            'net': net.state_dict(),
+            'net': model.state_dict(),
             'acc': acc,
-            'epoch': epoch,
         }
         if not os.path.isdir('checkpoint'):
             os.mkdir('checkpoint')
